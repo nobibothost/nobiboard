@@ -1,4 +1,3 @@
-// FILE: backend/server.js
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
@@ -65,6 +64,9 @@ app.post('/api/import_words', verifyApiKey, async (req, res) => {
         const { wordsText, groqKey } = req.body;
         if (!wordsText) return res.status(400).json({ error: "No words provided" });
 
+        // Backend fallback: Use provided key from frontend, OR use key from .env file
+        const activeGroqKey = groqKey || process.env.GROQ_API_KEY;
+
         // Basic Regex Cleaning: Split by whitespace, ignore URLs/Emails/Numbers
         const rawTokens = wordsText.split(/\s+/);
         const validWords = [];
@@ -82,12 +84,12 @@ app.post('/api/import_words', verifyApiKey, async (req, res) => {
         let uniqueWords = [...new Set(validWords)];
 
         // --- GROQ AI INTEGRATION FOR SMART FILTERING ---
-        if (groqKey && uniqueWords.length > 0) {
+        if (activeGroqKey && uniqueWords.length > 0) {
             try {
                 const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${groqKey}`,
+                        'Authorization': `Bearer ${activeGroqKey}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
