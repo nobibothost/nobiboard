@@ -9,23 +9,24 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f4f7f6;
             margin: 0;
-            padding: 0;
+            padding: 20px;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
-            height: 100vh;
         }
         .dashboard-card {
             background-color: #ffffff;
             border-radius: 12px;
             box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-            padding: 40px;
-            text-align: center;
-            width: 350px;
+            padding: 30px;
+            width: 100%;
+            max-width: 500px;
+            margin-bottom: 20px;
         }
         h2 {
             color: #333;
             margin-top: 0;
+            text-align: center;
         }
         .status-indicator {
             display: inline-block;
@@ -37,35 +38,64 @@
         .active { background-color: #28a745; }
         .inactive { background-color: #dc3545; }
         .data-row {
-            margin: 20px 0;
+            margin: 15px 0;
             padding: 15px;
             background-color: #f8f9fa;
             border-radius: 8px;
             border: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .data-label {
             font-size: 14px;
             color: #6c757d;
-            display: block;
-            margin-bottom: 5px;
         }
         .data-value {
-            font-size: 24px;
+            font-size: 18px;
             font-weight: bold;
             color: #212529;
         }
-        .refresh-btn {
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-size: 14px;
+        }
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+        textarea.form-control {
+            resize: vertical;
+            min-height: 120px;
+        }
+        .btn {
             background-color: #007bff;
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 12px 20px;
             border-radius: 6px;
             cursor: pointer;
             font-size: 16px;
+            width: 100%;
             transition: background-color 0.3s;
         }
-        .refresh-btn:hover {
+        .btn:hover {
             background-color: #0056b3;
+        }
+        .btn-success {
+            background-color: #28a745;
+        }
+        .btn-success:hover {
+            background-color: #218838;
         }
     </style>
 </head>
@@ -78,21 +108,37 @@
             <span class="data-label">API Service Status</span>
             <div>
                 <span id="serviceDot" class="status-indicator inactive"></span>
-                <span id="serviceText" class="data-value" style="font-size: 18px;">Checking...</span>
+                <span id="serviceText" class="data-value">Checking...</span>
             </div>
         </div>
 
         <div class="data-row">
             <span class="data-label">Database Status</span>
-            <div class="data-value" id="dbText" style="font-size: 18px;">Checking...</div>
+            <span class="data-value" id="dbText">Checking...</span>
         </div>
 
         <div class="data-row">
-            <span class="data-label">Total Words Saved Globally</span>
-            <div class="data-value" id="wordCount">--</div>
+            <span class="data-label">Global Words Saved</span>
+            <span class="data-value" id="wordCount">--</span>
         </div>
 
-        <button class="refresh-btn" onclick="fetchStatus()">Refresh Data</button>
+        <button class="btn" onclick="fetchStatus()">Refresh Data</button>
+    </div>
+
+    <div class="dashboard-card">
+        <h2>Import Dictionary Words</h2>
+        
+        <div class="form-group">
+            <label>API Secret Key</label>
+            <input type="password" id="apiKeyInput" class="form-control" placeholder="Enter secret key to authorize import">
+        </div>
+
+        <div class="form-group">
+            <label>Paste Words (separated by spaces or newlines)</label>
+            <textarea id="importText" class="form-control" placeholder="Example: hello duniya kya haal hai..."></textarea>
+        </div>
+
+        <button class="btn btn-success" onclick="importWords()" id="importBtn">Import Words to Global Cloud</button>
     </div>
 
     <script>
@@ -101,18 +147,16 @@
                 const response = await fetch('/api/status');
                 const data = await response.json();
                 
-                // Update Service
                 const serviceDot = document.getElementById('serviceDot');
                 const serviceText = document.getElementById('serviceText');
                 if(data.serviceStatus === 'Active') {
                     serviceDot.className = 'status-indicator active';
-                    serviceText.innerText = 'Active & Running';
+                    serviceText.innerText = 'Active';
                 } else {
                     serviceDot.className = 'status-indicator inactive';
                     serviceText.innerText = 'Offline';
                 }
 
-                // Update Database
                 const dbText = document.getElementById('dbText');
                 if(data.databaseConnected) {
                     dbText.innerText = 'Connected ✅';
@@ -122,7 +166,6 @@
                     dbText.style.color = '#dc3545';
                 }
 
-                // Update Count
                 document.getElementById('wordCount').innerText = data.totalWordsSaved;
 
             } catch (error) {
@@ -133,7 +176,50 @@
             }
         }
 
-        // Fetch on load
+        async function importWords() {
+            const apiKey = document.getElementById('apiKeyInput').value;
+            const wordsText = document.getElementById('importText').value;
+            const btn = document.getElementById('importBtn');
+
+            if (!apiKey) {
+                alert("Please enter API Secret Key");
+                return;
+            }
+            if (!wordsText.trim()) {
+                alert("Please paste some words to import");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = "Importing...";
+
+            try {
+                const response = await fetch('/api/import_words', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': apiKey
+                    },
+                    body: JSON.stringify({ wordsText })
+                });
+
+                const result = await response.json();
+                
+                if (response.status === 200) {
+                    alert(result.message);
+                    document.getElementById('importText').value = '';
+                    fetchStatus(); // Update count
+                } else {
+                    alert("Error: " + (result.error || "Failed to import"));
+                }
+            } catch (error) {
+                alert("Network error occurred.");
+            }
+
+            btn.disabled = false;
+            btn.innerText = "Import Words to Global Cloud";
+        }
+
         fetchStatus();
     </script>
 </body>
