@@ -59,35 +59,68 @@ app.post('/api/save_word', verifyApiKey, async (req, res) => {
     }
 });
 
-// 2. Bulk Import Words (Paragraphs, Stories)
+// 2. Bulk Import Words with Groq AI Smart Filtering
 app.post('/api/import_words', verifyApiKey, async (req, res) => {
     try {
-        const { wordsText } = req.body;
+        const { wordsText, groqKey } = req.body;
         if (!wordsText) return res.status(400).json({ error: "No words provided" });
 
-        // Split text by any whitespace (spaces, enters, newlines, tabs)
+        // Basic Regex Cleaning: Split by whitespace, ignore URLs/Emails/Numbers
         const rawTokens = wordsText.split(/\s+/);
         const validWords = [];
 
         for (let token of rawTokens) {
-            // Ignore URLs and Emails completely
             if (token.includes('@') || token.match(/.*(http|www|\.[a-z]{2,}).*/)) {
                 continue;
             }
-
-            // Remove punctuation marks from the start and end of the word (like commas or full stops)
             let cleaned = token.replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '').toLowerCase();
-
-            // If the cleaned word contains strictly alphabets and is longer than 1 character, keep it.
-            // This drops words with numbers (123) or special symbols inside (sp!derman).
             if (cleaned.length > 1 && /^[a-z]+$/.test(cleaned)) {
                 validWords.push(cleaned);
             }
         }
         
-        // Remove duplicates from the pasted text array
-        const uniqueWords = [...new Set(validWords)];
-        
+        let uniqueWords = [...new Set(validWords)];
+
+        // --- GROQ AI INTEGRATION FOR SMART FILTERING ---
+        if (groqKey && uniqueWords.length > 0) {
+            try {
+                const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${groqKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: "llama3-8b-8192",
+                        messages: [
+                            { 
+                                role: "system", 
+                                content: "You are a strict dictionary filter. You will receive a space-separated list of words. Your ONLY job is to identify and keep valid, real English, Hindi, or Hinglish words. You MUST discard gibberish (e.g. 'asdfg'), randomly typed nonsense, extremely long invalid characters, or severe typos. OUTPUT FORMAT: Return ONLY the cleaned, space-separated words in lowercase. Do NOT output any commas, bullet points, introductory text, or explanations." 
+                            },
+                            { role: "user", content: uniqueWords.join(" ") }
+                        ],
+                        temperature: 0.1
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Groq API Error: ${response.statusText}`);
+                }
+
+                const aiData = await response.json();
+                if (aiData.choices && aiData.choices[0] && aiData.choices[0].message) {
+                    const aiOutput = aiData.choices[0].message.content;
+                    const aiTokens = aiOutput.split(/\s+/);
+                    const aiCleaned = aiTokens.filter(w => w.length > 1 && /^[a-z]+$/.test(w));
+                    uniqueWords = [...new Set(aiCleaned)]; // Override with AI cleaned list
+                }
+            } catch (error) {
+                console.error("Groq AI Error:", error);
+                return res.status(500).json({ error: "Groq AI Filtering failed. Please check your Groq API Key." });
+            }
+        }
+        // ------------------------------------------------
+
         let addedCount = 0;
         for (let w of uniqueWords) {
             const exists = await Word.findOne({ word: w });
@@ -97,7 +130,7 @@ app.post('/api/import_words', verifyApiKey, async (req, res) => {
             }
         }
 
-        res.status(200).json({ message: `Success! Added ${addedCount} new pure words to the global dictionary.` });
+        res.status(200).json({ message: `Success! Added ${addedCount} highly valid words to the global dictionary.` });
     } catch (error) {
         res.status(500).json({ error: "Internal Server Error during import" });
     }
