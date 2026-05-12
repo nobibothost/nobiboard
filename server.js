@@ -8,12 +8,10 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middlewares
 app.use(cors());
-app.use(express.json()); // Parses incoming JSON payloads
-app.use(express.static(path.join(__dirname, 'public'))); // Serves frontend dashboard
+app.use(express.json()); 
+app.use(express.static(path.join(__dirname, 'public'))); 
 
-// MongoDB Connection
 let isDbConnected = false;
 mongoose.connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
@@ -25,14 +23,12 @@ mongoose.connect(process.env.MONGO_URI, {
     console.error('❌ MongoDB Connection Error:', err);
 });
 
-// Database Schema & Model
 const wordSchema = new mongoose.Schema({
     word: { type: String, required: true, trim: true },
     timestamp: { type: Date, default: Date.now }
 });
 const Word = mongoose.model('Word', wordSchema);
 
-// Security Middleware: API Key Checker
 const verifyApiKey = (req, res, next) => {
     const apiKey = req.headers['x-api-key'];
     if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
@@ -41,9 +37,6 @@ const verifyApiKey = (req, res, next) => {
     next();
 };
 
-// ================= API ROUTES =================
-
-// 1. Route for App to save new words (Protected by API Key)
 app.post('/api/save_word', verifyApiKey, async (req, res) => {
     try {
         const { word } = req.body;
@@ -51,8 +44,13 @@ app.post('/api/save_word', verifyApiKey, async (req, res) => {
             return res.status(400).json({ error: "Word is required" });
         }
 
-        // Save word to database
-        const newWord = new Word({ word });
+        // Duplicate Check Logic
+        const existingWord = await Word.findOne({ word: word.toLowerCase() });
+        if (existingWord) {
+            return res.status(200).json({ message: "Word already exists in DB, skipping." });
+        }
+
+        const newWord = new Word({ word: word.toLowerCase() });
         await newWord.save();
 
         res.status(200).json({ message: "Word saved successfully" });
@@ -61,7 +59,6 @@ app.post('/api/save_word', verifyApiKey, async (req, res) => {
     }
 });
 
-// 2. Route for Frontend Dashboard to get service status
 app.get('/api/status', async (req, res) => {
     try {
         const count = await Word.countDocuments();
@@ -75,7 +72,6 @@ app.get('/api/status', async (req, res) => {
     }
 });
 
-// Start Server
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on http://localhost:${PORT}`);
 });
