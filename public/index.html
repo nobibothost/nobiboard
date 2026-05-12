@@ -139,7 +139,7 @@
     </div>
 
     <div class="dashboard-card">
-        <h2>AI Smart Importer</h2>
+        <h2>Smart Word Importer</h2>
         
         <div class="form-group">
             <label>Master API Secret Key</label>
@@ -147,20 +147,16 @@
         </div>
 
         <div class="form-group">
-            <label>Groq API Key (Optional)</label>
-            <input type="password" id="groqKeyInput" class="form-control" placeholder="Leaves empty if set in .env">
-        </div>
-
-        <div class="form-group">
             <label>Paste Paragraphs or Stories</label>
             <textarea id="importText" class="form-control" placeholder="Paste your story or large text here..."></textarea>
+            <span class="helper-text">Spaces and enters will split words automatically. Emails, links, numbers, and symbols will be ignored.</span>
         </div>
 
-        <button class="btn" onclick="processText()" id="processBtn">Process Words with AI</button>
+        <button class="btn" onclick="processText()" id="processBtn">Process Words</button>
 
         <div id="outputContainer" class="output-section">
             <div class="form-group">
-                <label>Review AI Cleaned Words</label>
+                <label>Review Cleaned Words</label>
                 <textarea id="processedText" class="form-control" placeholder="Cleaned words will appear here..."></textarea>
                 <span class="helper-text">You can edit this list and remove any unwanted words before pushing.</span>
             </div>
@@ -205,7 +201,6 @@
 
         async function processText() {
             const apiKey = document.getElementById('apiKeyInput').value;
-            const groqKey = document.getElementById('groqKeyInput').value;
             const wordsText = document.getElementById('importText').value;
             const btn = document.getElementById('processBtn');
 
@@ -219,7 +214,7 @@
             }
 
             btn.disabled = true;
-            btn.innerText = "AI Processing... Please wait.";
+            btn.innerText = "Processing... Please wait.";
             document.getElementById('outputContainer').style.display = 'none';
 
             try {
@@ -229,7 +224,7 @@
                         'Content-Type': 'application/json',
                         'x-api-key': apiKey
                     },
-                    body: JSON.stringify({ wordsText, groqKey })
+                    body: JSON.stringify({ wordsText })
                 });
 
                 const result = await response.json();
@@ -250,7 +245,7 @@
             }
 
             btn.disabled = false;
-            btn.innerText = "Process Words with AI";
+            btn.innerText = "Process Words";
         }
 
         async function pushWords() {
