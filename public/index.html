@@ -104,6 +104,12 @@
         .btn-success:hover {
             background-color: #218838;
         }
+        .output-section {
+            display: none;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px dashed #ced4da;
+        }
     </style>
 </head>
 <body>
@@ -141,9 +147,8 @@
         </div>
 
         <div class="form-group">
-            <label>Groq API Key (Optional but Recommended)</label>
-            <input type="password" id="groqKeyInput" class="form-control" placeholder="gsk_xxxxxxxxxxxxxxxxxxx">
-            <span class="helper-text">If provided, Groq AI will strictly filter out gibberish, bad spellings, and invalid entries before saving.</span>
+            <label>Groq API Key (Optional)</label>
+            <input type="password" id="groqKeyInput" class="form-control" placeholder="Leaves empty if set in .env">
         </div>
 
         <div class="form-group">
@@ -151,7 +156,16 @@
             <textarea id="importText" class="form-control" placeholder="Paste your story or large text here..."></textarea>
         </div>
 
-        <button class="btn btn-success" onclick="importWords()" id="importBtn">Process & Import Words</button>
+        <button class="btn" onclick="processText()" id="processBtn">Process Words with AI</button>
+
+        <div id="outputContainer" class="output-section">
+            <div class="form-group">
+                <label>Review AI Cleaned Words</label>
+                <textarea id="processedText" class="form-control" placeholder="Cleaned words will appear here..."></textarea>
+                <span class="helper-text">You can edit this list and remove any unwanted words before pushing.</span>
+            </div>
+            <button class="btn btn-success" onclick="pushWords()" id="pushBtn">Push to Database</button>
+        </div>
     </div>
 
     <script>
@@ -189,26 +203,27 @@
             }
         }
 
-        async function importWords() {
+        async function processText() {
             const apiKey = document.getElementById('apiKeyInput').value;
             const groqKey = document.getElementById('groqKeyInput').value;
             const wordsText = document.getElementById('importText').value;
-            const btn = document.getElementById('importBtn');
+            const btn = document.getElementById('processBtn');
 
             if (!apiKey) {
                 alert("Please enter Master API Secret Key");
                 return;
             }
             if (!wordsText.trim()) {
-                alert("Please paste some paragraphs or stories to import");
+                alert("Please paste some text to process");
                 return;
             }
 
             btn.disabled = true;
-            btn.innerText = groqKey ? "Groq AI is Cleaning Words..." : "Importing...";
+            btn.innerText = "AI Processing... Please wait.";
+            document.getElementById('outputContainer').style.display = 'none';
 
             try {
-                const response = await fetch('/api/import_words', {
+                const response = await fetch('/api/process_words', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -220,18 +235,67 @@
                 const result = await response.json();
                 
                 if (response.status === 200) {
-                    alert(result.message);
-                    document.getElementById('importText').value = '';
-                    fetchStatus(); // Update count
+                    const cleanedWords = result.processedWords;
+                    if (cleanedWords.length === 0) {
+                        alert("No valid new words found to process.");
+                    } else {
+                        document.getElementById('processedText').value = cleanedWords.join(" ");
+                        document.getElementById('outputContainer').style.display = 'block';
+                    }
                 } else {
-                    alert("Error: " + (result.error || "Failed to import"));
+                    alert("Error: " + (result.error || "Failed to process"));
                 }
             } catch (error) {
-                alert("Network error occurred.");
+                alert("Network error occurred during processing.");
             }
 
             btn.disabled = false;
-            btn.innerText = "Process & Import Words";
+            btn.innerText = "Process Words with AI";
+        }
+
+        async function pushWords() {
+            const apiKey = document.getElementById('apiKeyInput').value;
+            const finalizedText = document.getElementById('processedText').value;
+            const btn = document.getElementById('pushBtn');
+
+            if (!finalizedText.trim()) {
+                alert("The processed list is empty.");
+                return;
+            }
+
+            const wordsList = finalizedText.split(/\s+/).filter(w => w.length > 0);
+
+            btn.disabled = true;
+            btn.innerText = "Pushing to Cloud...";
+
+            try {
+                const response = await fetch('/api/save_processed_words', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': apiKey
+                    },
+                    body: JSON.stringify({ wordsList })
+                });
+
+                const result = await response.json();
+                
+                if (response.status === 200) {
+                    alert(result.message);
+                    // Clear the inputs
+                    document.getElementById('importText').value = '';
+                    document.getElementById('processedText').value = '';
+                    document.getElementById('outputContainer').style.display = 'none';
+                    fetchStatus(); // Update dashboard count
+                } else {
+                    alert("Error: " + (result.error || "Failed to save words"));
+                }
+            } catch (error) {
+                alert("Network error occurred while saving.");
+            }
+
+            btn.disabled = false;
+            btn.innerText = "Push to Database";
         }
 
         fetchStatus();
