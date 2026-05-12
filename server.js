@@ -59,18 +59,33 @@ app.post('/api/save_word', verifyApiKey, async (req, res) => {
     }
 });
 
-// 2. Bulk Import Words (from Dashboard)
+// 2. Bulk Import Words (Paragraphs, Stories)
 app.post('/api/import_words', verifyApiKey, async (req, res) => {
     try {
         const { wordsText } = req.body;
         if (!wordsText) return res.status(400).json({ error: "No words provided" });
 
-        // Split by spaces, newlines, commas. Convert to lowercase, remove symbols.
-        const rawWords = wordsText.split(/[\s,]+/);
-        const validWords = rawWords.map(w => w.trim().toLowerCase())
-                                   .filter(w => w.length > 1 && !w.includes('@') && !w.match(/.*(http|www|\.[a-z]{2,}).*/));
+        // Split text by any whitespace (spaces, enters, newlines, tabs)
+        const rawTokens = wordsText.split(/\s+/);
+        const validWords = [];
+
+        for (let token of rawTokens) {
+            // Ignore URLs and Emails completely
+            if (token.includes('@') || token.match(/.*(http|www|\.[a-z]{2,}).*/)) {
+                continue;
+            }
+
+            // Remove punctuation marks from the start and end of the word (like commas or full stops)
+            let cleaned = token.replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '').toLowerCase();
+
+            // If the cleaned word contains strictly alphabets and is longer than 1 character, keep it.
+            // This drops words with numbers (123) or special symbols inside (sp!derman).
+            if (cleaned.length > 1 && /^[a-z]+$/.test(cleaned)) {
+                validWords.push(cleaned);
+            }
+        }
         
-        // Remove duplicates within the pasted text
+        // Remove duplicates from the pasted text array
         const uniqueWords = [...new Set(validWords)];
         
         let addedCount = 0;
@@ -82,7 +97,7 @@ app.post('/api/import_words', verifyApiKey, async (req, res) => {
             }
         }
 
-        res.status(200).json({ message: `Success! Added ${addedCount} new words to global dictionary.` });
+        res.status(200).json({ message: `Success! Added ${addedCount} new pure words to the global dictionary.` });
     } catch (error) {
         res.status(500).json({ error: "Internal Server Error during import" });
     }
