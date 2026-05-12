@@ -58,16 +58,15 @@ app.post('/api/save_word', verifyApiKey, async (req, res) => {
     }
 });
 
-// 2. Bulk Import Words with Groq AI Smart Filtering
-app.post('/api/import_words', verifyApiKey, async (req, res) => {
+// 2. Step 1: Process Text with AI (Does NOT save to DB yet)
+app.post('/api/process_words', verifyApiKey, async (req, res) => {
     try {
         const { wordsText, groqKey } = req.body;
         if (!wordsText) return res.status(400).json({ error: "No words provided" });
 
-        // Backend fallback: Use provided key from frontend, OR use key from .env file
         const activeGroqKey = groqKey || process.env.GROQ_API_KEY;
 
-        // Basic Regex Cleaning: Split by whitespace, ignore URLs/Emails/Numbers
+        // Basic Regex Cleaning
         const rawTokens = wordsText.split(/\s+/);
         const validWords = [];
 
@@ -114,17 +113,30 @@ app.post('/api/import_words', verifyApiKey, async (req, res) => {
                     const aiOutput = aiData.choices[0].message.content;
                     const aiTokens = aiOutput.split(/\s+/);
                     const aiCleaned = aiTokens.filter(w => w.length > 1 && /^[a-z]+$/.test(w));
-                    uniqueWords = [...new Set(aiCleaned)]; // Override with AI cleaned list
+                    uniqueWords = [...new Set(aiCleaned)];
                 }
             } catch (error) {
                 console.error("Groq AI Error:", error);
                 return res.status(500).json({ error: "Groq AI Filtering failed. Please check your Groq API Key." });
             }
         }
-        // ------------------------------------------------
+        
+        res.status(200).json({ processedWords: uniqueWords });
+    } catch (error) {
+        res.status(500).json({ error: "Internal Server Error during processing" });
+    }
+});
+
+// 3. Step 2: Save Processed Words to DB
+app.post('/api/save_processed_words', verifyApiKey, async (req, res) => {
+    try {
+        const { wordsList } = req.body;
+        if (!wordsList || !Array.isArray(wordsList)) {
+            return res.status(400).json({ error: "Invalid data format" });
+        }
 
         let addedCount = 0;
-        for (let w of uniqueWords) {
+        for (let w of wordsList) {
             const exists = await Word.findOne({ word: w });
             if (!exists) {
                 await new Word({ word: w }).save();
@@ -132,13 +144,13 @@ app.post('/api/import_words', verifyApiKey, async (req, res) => {
             }
         }
 
-        res.status(200).json({ message: `Success! Added ${addedCount} highly valid words to the global dictionary.` });
+        res.status(200).json({ message: `Success! Pushed ${addedCount} new words to the global dictionary.` });
     } catch (error) {
-        res.status(500).json({ error: "Internal Server Error during import" });
+        res.status(500).json({ error: "Internal Server Error during saving" });
     }
 });
 
-// 3. Get all words for Android Sync
+// 4. Get all words for Android Sync
 app.get('/api/get_all_words', verifyApiKey, async (req, res) => {
     try {
         const allWords = await Word.find({}, 'word -_id');
@@ -149,7 +161,7 @@ app.get('/api/get_all_words', verifyApiKey, async (req, res) => {
     }
 });
 
-// 4. Status for Dashboard
+// 5. Status for Dashboard
 app.get('/api/status', async (req, res) => {
     try {
         const count = await Word.countDocuments();
