@@ -58,69 +58,33 @@ app.post('/api/save_word', verifyApiKey, async (req, res) => {
     }
 });
 
-// 2. Step 1: Process Text with AI (Does NOT save to DB yet)
+// 2. Step 1: Process Text with Native Regex (Does NOT save to DB yet)
 app.post('/api/process_words', verifyApiKey, async (req, res) => {
     try {
-        const { wordsText, groqKey } = req.body;
+        const { wordsText } = req.body;
         if (!wordsText) return res.status(400).json({ error: "No words provided" });
-
-        const activeGroqKey = groqKey || process.env.GROQ_API_KEY;
 
         // Basic Regex Cleaning
         const rawTokens = wordsText.split(/\s+/);
         const validWords = [];
 
         for (let token of rawTokens) {
+            // Ignore URLs and Emails completely
             if (token.includes('@') || token.match(/.*(http|www|\.[a-z]{2,}).*/)) {
                 continue;
             }
+            // Remove punctuation from edges and convert to lowercase
             let cleaned = token.replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '').toLowerCase();
+            
+            // Keep only strict alphabetic words length > 1
             if (cleaned.length > 1 && /^[a-z]+$/.test(cleaned)) {
                 validWords.push(cleaned);
             }
         }
         
+        // Remove duplicates internally before showing to user
         let uniqueWords = [...new Set(validWords)];
 
-        // --- GROQ AI INTEGRATION FOR SMART FILTERING ---
-        if (activeGroqKey && uniqueWords.length > 0) {
-            try {
-                const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${activeGroqKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: "llama3-8b-8192",
-                        messages: [
-                            { 
-                                role: "system", 
-                                content: "You are a strict dictionary filter. You will receive a space-separated list of words. Your ONLY job is to identify and keep valid, real English, Hindi, or Hinglish words. You MUST discard gibberish (e.g. 'asdfg'), randomly typed nonsense, extremely long invalid characters, or severe typos. OUTPUT FORMAT: Return ONLY the cleaned, space-separated words in lowercase. Do NOT output any commas, bullet points, introductory text, or explanations." 
-                            },
-                            { role: "user", content: uniqueWords.join(" ") }
-                        ],
-                        temperature: 0.1
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Groq API Error: ${response.statusText}`);
-                }
-
-                const aiData = await response.json();
-                if (aiData.choices && aiData.choices[0] && aiData.choices[0].message) {
-                    const aiOutput = aiData.choices[0].message.content;
-                    const aiTokens = aiOutput.split(/\s+/);
-                    const aiCleaned = aiTokens.filter(w => w.length > 1 && /^[a-z]+$/.test(w));
-                    uniqueWords = [...new Set(aiCleaned)];
-                }
-            } catch (error) {
-                console.error("Groq AI Error:", error);
-                return res.status(500).json({ error: "Groq AI Filtering failed. Please check your Groq API Key." });
-            }
-        }
-        
         res.status(200).json({ processedWords: uniqueWords });
     } catch (error) {
         res.status(500).json({ error: "Internal Server Error during processing" });
