@@ -64,6 +64,7 @@
             margin-bottom: 5px;
             color: #333;
             font-size: 14px;
+            font-weight: bold;
         }
         .form-control {
             width: 100%;
@@ -76,6 +77,12 @@
         textarea.form-control {
             resize: vertical;
             min-height: 120px;
+        }
+        .helper-text {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+            display: block;
         }
         .btn {
             background-color: #007bff;
@@ -126,7 +133,7 @@
     </div>
 
     <div class="dashboard-card">
-        <h2>Import Dictionary Words</h2>
+        <h2>Paragraph & Story Importer</h2>
         
         <div class="form-group">
             <label>API Secret Key</label>
@@ -134,11 +141,12 @@
         </div>
 
         <div class="form-group">
-            <label>Paste Words (separated by spaces or newlines)</label>
-            <textarea id="importText" class="form-control" placeholder="Example: hello duniya kya haal hai..."></textarea>
+            <label>Paste Paragraphs or Stories</label>
+            <textarea id="importText" class="form-control" placeholder="Paste your story or large text here..."></textarea>
+            <span class="helper-text">Spaces and enters will split words automatically. Emails, links, numbers, and special symbols will be ignored.</span>
         </div>
 
-        <button class="btn btn-success" onclick="importWords()" id="importBtn">Import Words to Global Cloud</button>
+        <button class="btn btn-success" onclick="importWords()" id="importBtn">Import Clean Words</button>
     </div>
 
     <script>
@@ -186,12 +194,12 @@
                 return;
             }
             if (!wordsText.trim()) {
-                alert("Please paste some words to import");
+                alert("Please paste some paragraphs or stories to import");
                 return;
             }
 
             btn.disabled = true;
-            btn.innerText = "Importing...";
+            btn.innerText = "Processing & Importing...";
 
             try {
                 const response = await fetch('/api/import_words', {
@@ -217,7 +225,7 @@
             }
 
             btn.disabled = false;
-            btn.innerText = "Import Words to Global Cloud";
+            btn.innerText = "Import Clean Words";
         }
 
         fetchStatus();
