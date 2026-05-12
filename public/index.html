@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gboard API Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .dashboard-card {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+            padding: 40px;
+            text-align: center;
+            width: 350px;
+        }
+        h2 {
+            color: #333;
+            margin-top: 0;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .active { background-color: #28a745; }
+        .inactive { background-color: #dc3545; }
+        .data-row {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+        .data-label {
+            font-size: 14px;
+            color: #6c757d;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .data-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #212529;
+        }
+        .refresh-btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        .refresh-btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-card">
+        <h2>System Dashboard</h2>
+        
+        <div class="data-row">
+            <span class="data-label">API Service Status</span>
+            <div>
+                <span id="serviceDot" class="status-indicator inactive"></span>
+                <span id="serviceText" class="data-value" style="font-size: 18px;">Checking...</span>
+            </div>
+        </div>
+
+        <div class="data-row">
+            <span class="data-label">Database Status</span>
+            <div class="data-value" id="dbText" style="font-size: 18px;">Checking...</div>
+        </div>
+
+        <div class="data-row">
+            <span class="data-label">Total Words Saved Globally</span>
+            <div class="data-value" id="wordCount">--</div>
+        </div>
+
+        <button class="refresh-btn" onclick="fetchStatus()">Refresh Data</button>
+    </div>
+
+    <script>
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                // Update Service
+                const serviceDot = document.getElementById('serviceDot');
+                const serviceText = document.getElementById('serviceText');
+                if(data.serviceStatus === 'Active') {
+                    serviceDot.className = 'status-indicator active';
+                    serviceText.innerText = 'Active & Running';
+                } else {
+                    serviceDot.className = 'status-indicator inactive';
+                    serviceText.innerText = 'Offline';
+                }
+
+                // Update Database
+                const dbText = document.getElementById('dbText');
+                if(data.databaseConnected) {
+                    dbText.innerText = 'Connected ✅';
+                    dbText.style.color = '#28a745';
+                } else {
+                    dbText.innerText = 'Disconnected ❌';
+                    dbText.style.color = '#dc3545';
+                }
+
+                // Update Count
+                document.getElementById('wordCount').innerText = data.totalWordsSaved;
+
+            } catch (error) {
+                document.getElementById('serviceDot').className = 'status-indicator inactive';
+                document.getElementById('serviceText').innerText = 'Server Error';
+                document.getElementById('dbText').innerText = 'Offline';
+                document.getElementById('wordCount').innerText = 'Error';
+            }
+        }
+
+        // Fetch on load
+        fetchStatus();
+    </script>
+</body>
+</html>
