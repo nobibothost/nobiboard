@@ -133,20 +133,25 @@
     </div>
 
     <div class="dashboard-card">
-        <h2>Paragraph & Story Importer</h2>
+        <h2>AI Smart Importer</h2>
         
         <div class="form-group">
-            <label>API Secret Key</label>
-            <input type="password" id="apiKeyInput" class="form-control" placeholder="Enter secret key to authorize import">
+            <label>Master API Secret Key</label>
+            <input type="password" id="apiKeyInput" class="form-control" placeholder="Required for database access">
+        </div>
+
+        <div class="form-group">
+            <label>Groq API Key (Optional but Recommended)</label>
+            <input type="password" id="groqKeyInput" class="form-control" placeholder="gsk_xxxxxxxxxxxxxxxxxxx">
+            <span class="helper-text">If provided, Groq AI will strictly filter out gibberish, bad spellings, and invalid entries before saving.</span>
         </div>
 
         <div class="form-group">
             <label>Paste Paragraphs or Stories</label>
             <textarea id="importText" class="form-control" placeholder="Paste your story or large text here..."></textarea>
-            <span class="helper-text">Spaces and enters will split words automatically. Emails, links, numbers, and special symbols will be ignored.</span>
         </div>
 
-        <button class="btn btn-success" onclick="importWords()" id="importBtn">Import Clean Words</button>
+        <button class="btn btn-success" onclick="importWords()" id="importBtn">Process & Import Words</button>
     </div>
 
     <script>
@@ -186,11 +191,12 @@
 
         async function importWords() {
             const apiKey = document.getElementById('apiKeyInput').value;
+            const groqKey = document.getElementById('groqKeyInput').value;
             const wordsText = document.getElementById('importText').value;
             const btn = document.getElementById('importBtn');
 
             if (!apiKey) {
-                alert("Please enter API Secret Key");
+                alert("Please enter Master API Secret Key");
                 return;
             }
             if (!wordsText.trim()) {
@@ -199,7 +205,7 @@
             }
 
             btn.disabled = true;
-            btn.innerText = "Processing & Importing...";
+            btn.innerText = groqKey ? "Groq AI is Cleaning Words..." : "Importing...";
 
             try {
                 const response = await fetch('/api/import_words', {
@@ -208,7 +214,7 @@
                         'Content-Type': 'application/json',
                         'x-api-key': apiKey
                     },
-                    body: JSON.stringify({ wordsText })
+                    body: JSON.stringify({ wordsText, groqKey })
                 });
 
                 const result = await response.json();
@@ -225,7 +231,7 @@
             }
 
             btn.disabled = false;
-            btn.innerText = "Import Clean Words";
+            btn.innerText = "Process & Import Words";
         }
 
         fetchStatus();
