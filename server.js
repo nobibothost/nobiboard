@@ -24,7 +24,7 @@ mongoose.connect(process.env.MONGO_URI, {
 });
 
 const wordSchema = new mongoose.Schema({
-    word: { type: String, required: true, trim: true },
+    word: { type: String, required: true, trim: true, unique: true },
     timestamp: { type: Date, default: Date.now }
 });
 const Word = mongoose.model('Word', wordSchema);
@@ -37,6 +37,7 @@ const verifyApiKey = (req, res, next) => {
     next();
 };
 
+// 1. Save single word (from Keyboard typing)
 app.post('/api/save_word', verifyApiKey, async (req, res) => {
     try {
         const { word } = req.body;
@@ -44,7 +45,6 @@ app.post('/api/save_word', verifyApiKey, async (req, res) => {
             return res.status(400).json({ error: "Word is required" });
         }
 
-        // Duplicate Check Logic
         const existingWord = await Word.findOne({ word: word.toLowerCase() });
         if (existingWord) {
             return res.status(200).json({ message: "Word already exists in DB, skipping." });
@@ -59,6 +59,47 @@ app.post('/api/save_word', verifyApiKey, async (req, res) => {
     }
 });
 
+// 2. Bulk Import Words (from Dashboard)
+app.post('/api/import_words', verifyApiKey, async (req, res) => {
+    try {
+        const { wordsText } = req.body;
+        if (!wordsText) return res.status(400).json({ error: "No words provided" });
+
+        // Split by spaces, newlines, commas. Convert to lowercase, remove symbols.
+        const rawWords = wordsText.split(/[\s,]+/);
+        const validWords = rawWords.map(w => w.trim().toLowerCase())
+                                   .filter(w => w.length > 1 && !w.includes('@') && !w.match(/.*(http|www|\.[a-z]{2,}).*/));
+        
+        // Remove duplicates within the pasted text
+        const uniqueWords = [...new Set(validWords)];
+        
+        let addedCount = 0;
+        for (let w of uniqueWords) {
+            const exists = await Word.findOne({ word: w });
+            if (!exists) {
+                await new Word({ word: w }).save();
+                addedCount++;
+            }
+        }
+
+        res.status(200).json({ message: `Success! Added ${addedCount} new words to global dictionary.` });
+    } catch (error) {
+        res.status(500).json({ error: "Internal Server Error during import" });
+    }
+});
+
+// 3. Get all words for Android Sync
+app.get('/api/get_all_words', verifyApiKey, async (req, res) => {
+    try {
+        const allWords = await Word.find({}, 'word -_id');
+        const wordList = allWords.map(obj => obj.word);
+        res.status(200).json({ words: wordList });
+    } catch (error) {
+        res.status(500).json({ error: "Failed to fetch dictionary" });
+    }
+});
+
+// 4. Status for Dashboard
 app.get('/api/status', async (req, res) => {
     try {
         const count = await Word.countDocuments();
