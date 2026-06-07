@@ -64,7 +64,7 @@ async function autoAskQuestionAndExtractWords() {
         return { totalAdded: 0, allGeneratedWords: [] };
     }
 
-    // List of random topics to keep the vocabulary diverse
+    // List of random topics
     const prompts = [
         "Write a casual 100-word story about Indian college life using a mix of pure Hindi and English words written in English script.",
         "Describe a crowded Mumbai local train experience in street-style Hinglish. Just write the paragraph.",
@@ -85,8 +85,11 @@ async function autoAskQuestionAndExtractWords() {
             max_tokens: 1000,
         });
 
-        const aiResponseText = response.choices[0]?.message?.content || "";
+        let aiResponseText = response.choices[0]?.message?.content || "";
         if (!aiResponseText) return { totalAdded: 0, allGeneratedWords: [] };
+
+        // Replace hyphens and underscores with spaces to split connected words
+        aiResponseText = aiResponseText.replace(/[-_]/g, ' ');
 
         // Process words: Split, clean, and filter
         const tokens = aiResponseText.split(/\s+/); 
@@ -99,7 +102,7 @@ async function autoAskQuestionAndExtractWords() {
             // Remove symbols and numbers
             let cleaned = t.replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '').toLowerCase();
             
-            // Keep only pure alphabets length > 1
+            // Keep pure alphabets only
             if (cleaned.length > 1 && /^[a-z]+$/.test(cleaned)) {
                 validWords.push(cleaned);
             }
@@ -109,7 +112,7 @@ async function autoAskQuestionAndExtractWords() {
         let newlyAddedCount = 0;
         let newlyAddedWords = [];
 
-        // Check database and add only new words
+        // Check db and add new words
         for (let word of uniqueValidWords) {
             const exists = await Word.findOne({ word: word });
             if (!exists) {
@@ -205,9 +208,13 @@ app.post('/api/save_word', verifyApiKey, async (req, res) => {
 
 app.post('/api/process_words', verifyApiKey, async (req, res) => {
     try {
-        const { wordsText } = req.body;
+        let { wordsText } = req.body;
         if (!wordsText) return res.status(400).json({ error: "No text" });
+        
+        // Convert hyphens and underscores to spaces to split connected words
+        wordsText = wordsText.replace(/[-_]/g, ' ');
         const tokens = wordsText.split(/\s+/);
+        
         const valid = [];
         for (let t of tokens) {
             if (t.includes('@') || /(http|www)/.test(t)) continue;
@@ -257,7 +264,6 @@ app.get('/api/status', async (req, res) => {
     } catch (err) { res.status(500).json({ error: "Status error" }); }
 });
 
-// Updated Manual Generate API to use the new logic
 app.post('/api/ai/manual_generate', verifyApiKey, async (req, res) => {
     try {
         const { totalAdded, allGeneratedWords } = await autoAskQuestionAndExtractWords();
