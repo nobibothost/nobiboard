@@ -414,7 +414,10 @@
         const file = e.target.files[0]; 
         if(!file) return; 
         const text = await file.text(); 
-        const words = [...new Set(text.split(/\r?\n/).map(l=>l.trim().toLowerCase().replace(/[^a-z]/g,'')).filter(w=>w.length>1))]; 
+        
+        // Convert hyphens and underscores to newlines so they split effectively
+        const words = [...new Set(text.replace(/[-_]/g, '\n').split(/\r?\n/).map(l=>l.trim().toLowerCase().replace(/[^a-z]/g,'')).filter(w=>w.length>1))]; 
+        
         if(!words.length) return showToast("No valid words", true); 
         try {
             const res = await apiRequest('/api/save_processed_words', { method:'POST', body:JSON.stringify({wordsList:words}) }); 
@@ -466,31 +469,52 @@
         } 
     };
 
-    processTextBtn.onclick = async () => { 
-        if(!validApiKey) { showToast("Please test API key first", true); return; }
+    // PROCESS TEXT LOCALLY ON FRONTEND
+    processTextBtn.onclick = () => { 
         const raw = importText.value; 
         if(!raw.trim()) return showToast("Paste text first", true); 
-        processTextBtn.disabled=true; 
-        processTextBtn.innerHTML='⏳ Processing...'; 
-        try { 
-            const res = await apiRequest('/api/process_words', { method:'POST', body:JSON.stringify({wordsText:raw}) }); 
-            const data = await res.json(); 
-            if(res.ok) { 
-                processedCache = data.processedWords||[]; 
-                if(processedCache.length) { 
-                    processedPreview.style.display='flex'; 
-                    processedPreview.innerHTML = processedCache.map(w=>`<span class="word-badge">${w}</span>`).join(''); 
-                    pushWordsBtn.disabled=false; 
-                    showToast(`Extracted ${processedCache.length} words`); 
-                } else showToast("No valid words", true); 
-            } else throw new Error(data.error); 
-        } catch(e) { showToast(e.message, true); } 
-        processTextBtn.disabled=false; 
-        processTextBtn.innerHTML='Process Words'; 
+        
+        processTextBtn.disabled = true; 
+        processTextBtn.innerHTML = '⏳ Processing...'; 
+        
+        try {
+            // Replace hyphens and underscores with spaces right here on the frontend
+            let processedText = raw.replace(/[-_]/g, ' ');
+            const tokens = processedText.split(/\s+/);
+            const valid = [];
+            
+            for (let t of tokens) {
+                // Ignore emails and web links
+                if (t.includes('@') || /(http|www)/.test(t)) continue;
+                // Keep only a-z alphabets after cleaning
+                let cleaned = t.replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '').toLowerCase();
+                if (cleaned.length > 1 && /^[a-z]+$/.test(cleaned)) {
+                    valid.push(cleaned);
+                }
+            }
+            
+            // Filter unique words
+            processedCache = [...new Set(valid)]; 
+            
+            if(processedCache.length) { 
+                processedPreview.style.display = 'flex'; 
+                processedPreview.innerHTML = processedCache.map(w => `<span class="word-badge">${w}</span>`).join(''); 
+                pushWordsBtn.disabled = false; 
+                showToast(`Extracted ${processedCache.length} words`); 
+            } else {
+                showToast("No valid words found", true); 
+            }
+        } catch(e) {
+            showToast(e.message, true); 
+        }
+        
+        processTextBtn.disabled = false; 
+        processTextBtn.innerHTML = 'Process Words'; 
     };
 
-    // UPDATED CHUNK-BASED PUSH LOGIC WITH SPINNER
+    // CHUNK-BASED PUSH LOGIC WITH SPINNER
     pushWordsBtn.onclick = async () => { 
+        if(!validApiKey) { showToast("Please test API key first", true); return; }
         if(!processedCache.length) return; 
         
         pushWordsBtn.disabled = true; 
