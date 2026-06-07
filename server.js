@@ -3,142 +3,293 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
+const cron = require('node-cron');
+const Groq = require('groq-sdk');
+
+console.log('🔍 ENV DEBUG:');
+console.log('  API_SECRET_KEY length:', process.env.API_SECRET_KEY?.length || 0);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
 app.use(cors());
-app.use(express.json()); 
-app.use(express.static(path.join(__dirname, 'public'))); 
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
+// Init Groq client
+let groqClient = null;
+if (process.env.GROQ_API_KEY) {
+    try {
+        groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
+        console.log('🚀 Groq AI client initialized');
+    } catch (err) { console.error('Groq init failed:', err.message); }
+}
+
+// Connect MongoDB
 let isDbConnected = false;
-mongoose.connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-}).then(() => {
-    isDbConnected = true;
-    console.log('✅ MongoDB Connected Successfully');
-}).catch((err) => {
-    console.error('❌ MongoDB Connection Error:', err);
-});
+mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => { isDbConnected = true; console.log('✅ MongoDB Connected'); })
+    .catch(err => console.error('MongoDB Error:', err));
 
 const wordSchema = new mongoose.Schema({
     word: { type: String, required: true, trim: true, unique: true },
+    source: { type: String, enum: ['user', 'ai'], default: 'user' },
     timestamp: { type: Date, default: Date.now }
 });
+
+wordSchema.index({ source: 1, timestamp: 1 });
 const Word = mongoose.model('Word', wordSchema);
 
+// Middleware for auth
 const verifyApiKey = (req, res, next) => {
-    const apiKey = req.headers['x-api-key'];
-    if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+    const received = (req.headers['x-api-key'] || '').trim();
+    const expected = (process.env.API_SECRET_KEY || '').trim();
+    if (!received || !expected || received !== expected) {
         return res.status(403).json({ error: "Access Denied: Invalid or Missing API Key" });
     }
     next();
 };
 
-// 1. Save single word (from Keyboard typing)
-app.post('/api/save_word', verifyApiKey, async (req, res) => {
-    try {
-        const { word } = req.body;
-        if (!word) {
-            return res.status(400).json({ error: "Word is required" });
-        }
+const getStartOfToday = () => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return now;
+};
 
-        const existingWord = await Word.findOne({ word: word.toLowerCase() });
-        if (existingWord) {
-            return res.status(200).json({ message: "Word already exists in DB, skipping." });
-        }
+// ==================== NEW AI LOGIC ====================
 
-        const newWord = new Word({ word: word.toLowerCase() });
-        await newWord.save();
-
-        res.status(200).json({ message: "Word saved successfully" });
-    } catch (error) {
-        res.status(500).json({ error: "Internal Server Error" });
+// Function to ask a random question to AI, process the paragraph, and save new words
+async function autoAskQuestionAndExtractWords() {
+    if (!groqClient) {
+        console.log("❌ Groq client not initialized.");
+        return { totalAdded: 0, allGeneratedWords: [] };
     }
-});
 
-// 2. Step 1: Process Text with Native Regex (Does NOT save to DB yet)
-app.post('/api/process_words', verifyApiKey, async (req, res) => {
+    // List of random topics to keep the vocabulary diverse
+    const prompts = [
+        "Write a casual 100-word story about Indian college life using a mix of pure Hindi and English words written in English script.",
+        "Describe a crowded Mumbai local train experience in street-style Hinglish. Just write the paragraph.",
+        "Explain how to make proper desi chai using casual Indian slang and Hinglish. No formatting, just text.",
+        "Talk about weekend plans and chilling with friends using casual modern Indian internet language.",
+        "Describe a dramatic Bollywood movie scene in casual desi Hinglish.",
+        "Explain the excitement of the last over of a cricket match in Indian slang."
+    ];
+    
+    const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
+    console.log(`🤖 AI Auto-Question Running: "${randomPrompt}"`);
+
     try {
-        const { wordsText } = req.body;
-        if (!wordsText) return res.status(400).json({ error: "No words provided" });
+        const response = await groqClient.chat.completions.create({
+            messages: [{ role: "user", content: randomPrompt }],
+            model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+            temperature: 0.9,
+            max_tokens: 1000,
+        });
 
-        // Basic Regex Cleaning
-        const rawTokens = wordsText.split(/\s+/);
+        const aiResponseText = response.choices[0]?.message?.content || "";
+        if (!aiResponseText) return { totalAdded: 0, allGeneratedWords: [] };
+
+        // Process words: Split, clean, and filter
+        const tokens = aiResponseText.split(/\s+/); 
         const validWords = [];
-
-        for (let token of rawTokens) {
-            // Ignore URLs and Emails completely
-            if (token.includes('@') || token.match(/.*(http|www|\.[a-z]{2,}).*/)) {
-                continue;
-            }
-            // Remove punctuation from edges and convert to lowercase
-            let cleaned = token.replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '').toLowerCase();
+        
+        for (let t of tokens) {
+            // Ignore emails and links
+            if (t.includes('@') || /(http|www)/.test(t)) continue;
             
-            // Keep only strict alphabetic words length > 1
+            // Remove symbols and numbers
+            let cleaned = t.replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '').toLowerCase();
+            
+            // Keep only pure alphabets length > 1
             if (cleaned.length > 1 && /^[a-z]+$/.test(cleaned)) {
                 validWords.push(cleaned);
             }
         }
-        
-        // Remove duplicates internally before showing to user
-        let uniqueWords = [...new Set(validWords)];
 
-        res.status(200).json({ processedWords: uniqueWords });
-    } catch (error) {
-        res.status(500).json({ error: "Internal Server Error during processing" });
-    }
-});
+        const uniqueValidWords = [...new Set(validWords)];
+        let newlyAddedCount = 0;
+        let newlyAddedWords = [];
 
-// 3. Step 2: Save Processed Words to DB
-app.post('/api/save_processed_words', verifyApiKey, async (req, res) => {
-    try {
-        const { wordsList } = req.body;
-        if (!wordsList || !Array.isArray(wordsList)) {
-            return res.status(400).json({ error: "Invalid data format" });
-        }
-
-        let addedCount = 0;
-        for (let w of wordsList) {
-            const exists = await Word.findOne({ word: w });
+        // Check database and add only new words
+        for (let word of uniqueValidWords) {
+            const exists = await Word.findOne({ word: word });
             if (!exists) {
-                await new Word({ word: w }).save();
-                addedCount++;
+                await new Word({ word: word, source: 'ai' }).save();
+                newlyAddedCount++;
+                newlyAddedWords.push(word);
             }
         }
 
-        res.status(200).json({ message: `Success! Pushed ${addedCount} new words to the global dictionary.` });
+        console.log(`✅ Extracted ${uniqueValidWords.length} words. Added ${newlyAddedCount} NEW words to DB.`);
+        return { totalAdded: newlyAddedCount, allGeneratedWords: newlyAddedWords };
+
     } catch (error) {
-        res.status(500).json({ error: "Internal Server Error during saving" });
+        console.error("❌ Auto-Question AI error:", error.message);
+        return { totalAdded: 0, allGeneratedWords: [] };
     }
+}
+
+// Cleanup logic
+async function performCleanup() {
+    const words = await Word.find({});
+    let processed = 0, deleted = 0, corrected = 0, splitWords = 0;
+    let report = [];
+
+    for (let doc of words) {
+        processed++;
+        let original = doc.word;
+        let action = 'kept';
+        let newWords = [];
+
+        // Delete bad lengths or chars
+        if (original.length > 20 || /[^a-z]/.test(original)) {
+            await Word.findByIdAndDelete(doc._id);
+            deleted++;
+            report.push({ action: 'deleted (garbage)', original });
+            continue;
+        }
+
+        // Fix repeated chars 
+        let fixed = original.replace(/(.)\1{2,}/g, "$1$1");
+        if (fixed !== original) {
+            action = 'corrected';
+            newWords = [fixed];
+            
+            await Word.findByIdAndDelete(doc._id);
+            
+            const exists = await Word.findOne({ word: fixed });
+            if (!exists) {
+                await new Word({ word: fixed, source: doc.source, timestamp: doc.timestamp }).save();
+            }
+            corrected++;
+            report.push({ action, original, new: newWords });
+        }
+    }
+    return { processed, deleted, corrected, splitWords, report };
+}
+
+// Schedulers
+const AI_CRON_SCHEDULE = process.env.AI_CRON_SCHEDULE || "*/30 * * * *";
+
+// Scheduled AI Generation
+cron.schedule(AI_CRON_SCHEDULE, async () => {
+    console.log(`🕒 Scheduled AI execution running...`);
+    await autoAskQuestionAndExtractWords();
 });
 
-// 4. Get all words for Android Sync
+// Daily cleanup at 2:00 AM
+cron.schedule('0 2 * * *', async () => {
+    console.log('🧹 Running daily cleanup at 2:00 AM...');
+    const result = await performCleanup();
+    console.log(`Cleanup Done. Processed: ${result.processed}, Deleted: ${result.deleted}, Corrected: ${result.corrected}`);
+});
+
+// Run once on startup if DB is empty
+setTimeout(async () => {
+    const count = await Word.countDocuments({ source: 'ai' });
+    if (count === 0) await autoAskQuestionAndExtractWords();
+}, 5000);
+
+
+// ==================== API ENDPOINTS ====================
+
+app.post('/api/save_word', verifyApiKey, async (req, res) => {
+    try {
+        const { word } = req.body;
+        if (!word) return res.status(400).json({ error: "Word required" });
+        const existing = await Word.findOne({ word: word.toLowerCase() });
+        if (existing) return res.json({ message: "Word exists" });
+        await new Word({ word: word.toLowerCase(), source: 'user' }).save();
+        res.json({ message: "Saved" });
+    } catch (err) { res.status(500).json({ error: "Server error" }); }
+});
+
+app.post('/api/process_words', verifyApiKey, async (req, res) => {
+    try {
+        const { wordsText } = req.body;
+        if (!wordsText) return res.status(400).json({ error: "No text" });
+        const tokens = wordsText.split(/\s+/);
+        const valid = [];
+        for (let t of tokens) {
+            if (t.includes('@') || /(http|www)/.test(t)) continue;
+            let cleaned = t.replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '').toLowerCase();
+            if (cleaned.length > 1 && /^[a-z]+$/.test(cleaned)) valid.push(cleaned);
+        }
+        res.json({ processedWords: [...new Set(valid)] });
+    } catch (err) { res.status(500).json({ error: "Processing failed" }); }
+});
+
+app.post('/api/save_processed_words', verifyApiKey, async (req, res) => {
+    try {
+        const { wordsList } = req.body;
+        if (!Array.isArray(wordsList)) return res.status(400).json({ error: "Invalid" });
+        let added = 0;
+        for (let w of wordsList) {
+            const exists = await Word.findOne({ word: w });
+            if (!exists) {
+                await new Word({ word: w, source: 'user' }).save();
+                added++;
+            }
+        }
+        res.json({ message: `Added ${added} user words` });
+    } catch (err) { res.status(500).json({ error: "Save failed" }); }
+});
+
 app.get('/api/get_all_words', verifyApiKey, async (req, res) => {
     try {
-        const allWords = await Word.find({}, 'word -_id');
-        const wordList = allWords.map(obj => obj.word);
-        res.status(200).json({ words: wordList });
-    } catch (error) {
-        res.status(500).json({ error: "Failed to fetch dictionary" });
-    }
+        const all = await Word.find({}, 'word -_id');
+        res.json({ words: all.map(o => o.word) });
+    } catch (err) { res.status(500).json({ error: "Fetch failed" }); }
 });
 
-// 5. Status for Dashboard
 app.get('/api/status', async (req, res) => {
     try {
-        const count = await Word.countDocuments();
+        const total = await Word.countDocuments();
+        const totalAI = await Word.countDocuments({ source: 'ai' });
+        const todayStart = getStartOfToday();
+        const todayAI = await Word.countDocuments({ source: 'ai', timestamp: { $gte: todayStart } });
         res.json({
             serviceStatus: 'Active',
             databaseConnected: isDbConnected,
-            totalWordsSaved: count
+            totalWordsSaved: total,
+            totalAIGenerated: totalAI,
+            todayAIGenerated: todayAI
         });
-    } catch (error) {
-        res.status(500).json({ error: "Failed to fetch status" });
+    } catch (err) { res.status(500).json({ error: "Status error" }); }
+});
+
+// Updated Manual Generate API to use the new logic
+app.post('/api/ai/manual_generate', verifyApiKey, async (req, res) => {
+    try {
+        const { totalAdded, allGeneratedWords } = await autoAskQuestionAndExtractWords();
+        res.json({
+            message: `AI added ${totalAdded} new Hinglish words from paragraph`,
+            addedCount: totalAdded,
+            generatedWords: allGeneratedWords
+        });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/ai/words', verifyApiKey, async (req, res) => {
+    try {
+        const aiWords = await Word.find({ source: 'ai' }, 'word timestamp -_id').sort({ timestamp: -1 }).limit(100);
+        res.json({ words: aiWords });
+    } catch (err) { res.status(500).json({ error: "Failed" }); }
+});
+
+app.get('/api/recent_activity', verifyApiKey, async (req, res) => {
+    try {
+        const recent = await Word.find({}, 'word source timestamp').sort({ timestamp: -1 }).limit(10);
+        res.json({ activities: recent });
+    } catch (err) { res.status(500).json({ error: "Failed to fetch recent activity" }); }
+});
+
+app.post('/api/run_cleanup', verifyApiKey, async (req, res) => {
+    try {
+        const result = await performCleanup();
+        res.json(result);
+    } catch (err) { 
+        res.status(500).json({ error: "Cleanup processing failed: " + err.message }); 
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Server is running on http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
