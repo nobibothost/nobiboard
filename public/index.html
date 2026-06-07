@@ -2,298 +2,576 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gboard API Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Gboard AI Hub | Smart Dictionary</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1"></script>
     <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f4f7f6;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            background: linear-gradient(145deg, #f6f9fc 0%, #eef2f8 100%);
+            padding: 24px;
+            transition: background 0.3s, color 0.2s;
         }
-        .dashboard-card {
-            background-color: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-            padding: 30px;
-            width: 100%;
-            max-width: 500px;
-            margin-bottom: 20px;
+        body.dark {
+            background: linear-gradient(145deg, #0f172a 0%, #0a0f1c 100%);
+            color: #e2e8f0;
         }
-        h2 {
-            color: #333;
-            margin-top: 0;
-            text-align: center;
+        .dashboard-container { max-width: 1400px; margin: 0 auto; }
+        
+        .glass-card {
+            background: rgba(255,255,255,0.75);
+            backdrop-filter: blur(20px);
+            border-radius: 28px;
+            border: 1px solid rgba(255,255,255,0.4);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.05);
+            padding: 24px;
+            margin-bottom: 24px;
         }
-        .status-indicator {
-            display: inline-block;
-            width: 15px;
-            height: 15px;
-            border-radius: 50%;
-            margin-right: 8px;
+        body.dark .glass-card {
+            background: rgba(30,41,59,0.85);
+            border-color: rgba(255,255,255,0.1);
         }
-        .active { background-color: #28a745; }
-        .inactive { background-color: #dc3545; }
-        .data-row {
-            margin: 15px 0;
-            padding: 15px;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            border: 1px solid #e9ecef;
+
+        .hero {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
         }
-        .data-label {
-            font-size: 14px;
-            color: #6c757d;
+        .hero h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #6f42c1, #9d5cff);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
         }
-        .data-value {
-            font-size: 18px;
-            font-weight: bold;
-            color: #212529;
+        .live-status { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.05); padding: 8px 18px; border-radius: 40px; }
+        .pulse-dot { width: 10px; height: 10px; background: #10b981; border-radius: 50%; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.7); } 70% { box-shadow: 0 0 0 12px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
+        .theme-toggle { background: rgba(0,0,0,0.05); border: none; border-radius: 60px; width: 44px; height: 44px; font-size: 1.3rem; cursor: pointer; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
         }
-        .form-group {
-            margin-bottom: 15px;
+        .stat-card {
+            background: white;
+            border-radius: 24px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            transition: transform 0.2s;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.02);
         }
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            color: #333;
-            font-size: 14px;
-            font-weight: bold;
+        body.dark .stat-card { background: #1e293b; }
+        .stat-card:hover { transform: translateY(-5px); }
+        .stat-icon { width: 56px; height: 56px; background: linear-gradient(135deg, #6f42c1, #9d5cff); border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 28px; color: white; }
+        .stat-info h3 { font-size: 28px; font-weight: 800; }
+        .stat-info p { color: #64748b; font-weight: 500; }
+
+        .two-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
         }
-        .form-control {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ced4da;
-            border-radius: 6px;
-            box-sizing: border-box;
-            font-family: inherit;
+        @media (max-width: 800px) { .two-columns { grid-template-columns: 1fr; } }
+
+        .words-cloud {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 16px;
+            max-height: 260px;
+            overflow-y: auto;
         }
-        textarea.form-control {
-            resize: vertical;
-            min-height: 120px;
-        }
-        .helper-text {
-            font-size: 12px;
-            color: #666;
-            margin-top: 5px;
-            display: block;
-        }
-        .btn {
-            background-color: #007bff;
+        .word-badge {
+            background: linear-gradient(135deg, #6f42c1, #9d5cff);
+            padding: 8px 18px;
+            border-radius: 60px;
+            font-weight: 600;
             color: white;
+            animation: popIn 0.3s ease;
+            cursor: default;
+        }
+        .word-badge:hover { transform: scale(1.08); }
+        @keyframes popIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+
+        .btn {
             border: none;
+            border-radius: 40px;
             padding: 12px 20px;
-            border-radius: 6px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #6f42c1, #9d5cff);
+            color: white;
             cursor: pointer;
-            font-size: 16px;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             width: 100%;
-            transition: background-color 0.3s;
         }
-        .btn:hover {
-            background-color: #0056b3;
+        .btn-secondary { background: rgba(0,0,0,0.05); color: #1e293b; }
+        body.dark .btn-secondary { background: #334155; color: white; }
+        .btn:hover:not(:disabled) { transform: translateY(-3px); filter: brightness(1.02); }
+        .btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+        .api-key-input {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
         }
-        .btn-success {
-            background-color: #28a745;
+        .api-key-input input {
+            flex: 2;
+            padding: 12px 16px;
+            border-radius: 40px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            font-family: monospace;
         }
-        .btn-success:hover {
-            background-color: #218838;
+        body.dark .api-key-input input {
+            background: #0f172a;
+            border-color: #334155;
+            color: white;
         }
-        .output-section {
+        .api-key-input button {
+            flex: 1;
+            margin: 0;
+        }
+        .key-status {
+            font-size: 12px;
+            margin-top: 8px;
+            color: #64748b;
+        }
+
+        .modal {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(8px);
             display: none;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 2px dashed #ced4da;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
         }
+        .modal-card { background: white; border-radius: 32px; padding: 28px; max-width: 400px; width: 90%; text-align: center; }
+        body.dark .modal-card { background: #1e293b; }
+        .progress-wrap { width: 100%; height: 10px; background: #e2e8f0; border-radius: 20px; margin: 20px 0; overflow: hidden; }
+        #progressBar { width: 0%; height: 100%; background: linear-gradient(90deg, #6f42c1, #9d5cff); transition: width 0.3s; }
+
+        .toast {
+            position: fixed; bottom: 30px; right: 30px;
+            background: white; border-radius: 60px; padding: 12px 24px;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+            transform: translateX(400px);
+            transition: transform 0.3s;
+            z-index: 1100;
+        }
+        .toast.show { transform: translateX(0); }
+        body.dark .toast { background: #1e293b; color: white; }
+
+        .activity-list { max-height: 260px; overflow-y: auto; }
+        .activity-item { padding: 12px 0; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; }
+        body.dark .activity-item { border-bottom-color: #334155; }
+        .skeleton { background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 12px; height: 40px; margin-bottom: 8px; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+        .cleanup-report {
+            margin-top: 16px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 13px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 16px;
+            padding: 12px;
+        }
+        body.dark .cleanup-report { background: rgba(255,255,255,0.05); }
+
+        /* SPINNER CSS */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
     </style>
 </head>
 <body>
-
-    <div class="dashboard-card">
-        <h2>System Dashboard</h2>
-        
-        <div class="data-row">
-            <span class="data-label">API Service Status</span>
-            <div>
-                <span id="serviceDot" class="status-indicator inactive"></span>
-                <span id="serviceText" class="data-value">Checking...</span>
-            </div>
-        </div>
-
-        <div class="data-row">
-            <span class="data-label">Database Status</span>
-            <span class="data-value" id="dbText">Checking...</span>
-        </div>
-
-        <div class="data-row">
-            <span class="data-label">Global Words Saved</span>
-            <span class="data-value" id="wordCount">--</span>
-        </div>
-
-        <button class="btn" onclick="fetchStatus()">Refresh Data</button>
-    </div>
-
-    <div class="dashboard-card">
-        <h2>Smart Word Importer</h2>
-        
-        <div class="form-group">
-            <label>Master API Secret Key</label>
-            <input type="password" id="apiKeyInput" class="form-control" placeholder="Required for database access">
-        </div>
-
-        <div class="form-group">
-            <label>Paste Paragraphs or Stories</label>
-            <textarea id="importText" class="form-control" placeholder="Paste your story or large text here..."></textarea>
-            <span class="helper-text">Spaces and enters will split words automatically. Emails, links, numbers, and symbols will be ignored.</span>
-        </div>
-
-        <button class="btn" onclick="processText()" id="processBtn">Process Words</button>
-
-        <div id="outputContainer" class="output-section">
-            <div class="form-group">
-                <label>Review Cleaned Words</label>
-                <textarea id="processedText" class="form-control" placeholder="Cleaned words will appear here..."></textarea>
-                <span class="helper-text">You can edit this list and remove any unwanted words before pushing.</span>
-            </div>
-            <button class="btn btn-success" onclick="pushWords()" id="pushBtn">Push to Database</button>
+<div class="dashboard-container">
+    <div class="glass-card hero">
+        <div><h1>🤖 Gboard AI Hub</h1><p>Hinglish Word Generator · AI Powered Dictionary</p></div>
+        <div style="display: flex; gap: 12px;">
+            <div class="live-status"><span class="pulse-dot"></span><span id="systemStatus">System Online</span></div>
+            <button class="theme-toggle" id="themeToggle">🌙</button>
         </div>
     </div>
 
-    <script>
-        async function fetchStatus() {
-            try {
-                const response = await fetch('/api/status');
-                const data = await response.json();
-                
-                const serviceDot = document.getElementById('serviceDot');
-                const serviceText = document.getElementById('serviceText');
-                if(data.serviceStatus === 'Active') {
-                    serviceDot.className = 'status-indicator active';
-                    serviceText.innerText = 'Active';
-                } else {
-                    serviceDot.className = 'status-indicator inactive';
-                    serviceText.innerText = 'Offline';
-                }
+    <div class="glass-card">
+        <h3>🔑 API Secret Key</h3>
+        <div class="api-key-input">
+            <input type="password" id="apiKeyInput" placeholder="Enter your API_SECRET_KEY from .env file">
+            <button id="testKeyBtn" class="btn-secondary" style="width: auto; padding: 12px 24px;">Test Key</button>
+        </div>
+        <div id="keyStatus" class="key-status">⚠️ No key set. Please enter and test.</div>
+    </div>
 
-                const dbText = document.getElementById('dbText');
-                if(data.databaseConnected) {
-                    dbText.innerText = 'Connected ✅';
-                    dbText.style.color = '#28a745';
-                } else {
-                    dbText.innerText = 'Disconnected ❌';
-                    dbText.style.color = '#dc3545';
-                }
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-icon">📚</div><div class="stat-info"><h3 id="statTotalWords">0</h3><p>Total Words</p></div></div>
+        <div class="stat-card"><div class="stat-icon">🤖</div><div class="stat-info"><h3 id="statAIWords">0</h3><p>AI Generated</p></div></div>
+        <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-info"><h3 id="statTodayAI">0</h3><p>Added Today (AI)</p></div></div>
+        <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-info"><h3 id="statUserWords">0</h3><p>User Words</p></div></div>
+    </div>
 
-                document.getElementById('wordCount').innerText = data.totalWordsSaved;
+    <div class="two-columns">
+        <div class="glass-card">
+            <h3>🔍 Word Explorer</h3>
+            <input type="text" id="searchInput" placeholder="Search words..." style="width:100%; padding:12px; border-radius:40px; border:1px solid #e2e8f0; margin:15px 0;">
+            <div id="searchResults" class="words-cloud" style="min-height: 120px;"><div class="skeleton"></div></div>
+            <div style="display:flex; gap:12px; margin-top:16px;">
+                <button id="exportCsvBtn" class="btn btn-secondary">📎 Export CSV</button>
+                <label for="csvUpload" class="btn btn-secondary" style="text-align:center; cursor:pointer;">📂 Import CSV</label>
+                <input type="file" id="csvUpload" accept=".csv" style="display:none;">
+            </div>
+        </div>
+        <div class="glass-card">
+            <h3>📊 Word Analytics</h3>
+            <canvas id="wordChart" width="400" height="200" style="max-height:200px; width:100%; margin-top:10px;"></canvas>
+        </div>
+    </div>
 
-            } catch (error) {
-                document.getElementById('serviceDot').className = 'status-indicator inactive';
-                document.getElementById('serviceText').innerText = 'Server Error';
-                document.getElementById('dbText').innerText = 'Offline';
-                document.getElementById('wordCount').innerText = 'Error';
+    <div class="two-columns">
+        <div class="glass-card">
+            <h3>⏱️ Recent Activity</h3>
+            <div id="activityList" class="activity-list"><div class="skeleton"></div><div class="skeleton"></div></div>
+        </div>
+        <div class="glass-card">
+            <h3>🧠 AI Word Studio</h3>
+            <button id="aiGenerateBtn" class="btn" disabled>✨ Generate AI Words</button>
+            <div id="liveWordsList" class="words-cloud" style="margin-top:20px;"><em style="color:#94a3b8">New words will appear here</em></div>
+        </div>
+    </div>
+
+    <div class="glass-card">
+        <h3>📝 Smart Text Importer</h3>
+        <textarea id="importText" rows="3" placeholder="Paste any text (emails, symbols, numbers will be filtered)" style="width:100%; border-radius:20px; padding:12px; margin:15px 0;"></textarea>
+        <div id="dragDropZone" style="border:2px dashed #cbd5e1; border-radius:20px; padding:20px; text-align:center; cursor:pointer; margin-bottom:15px;">📂 Drag & drop a .txt file here or click to upload</div>
+        <div style="display:flex; gap:12px;">
+            <button id="processTextBtn" class="btn btn-secondary">Process Words</button>
+            <button id="pushWordsBtn" class="btn" disabled>Push to Database</button>
+        </div>
+        <div id="processedWordsPreview" class="words-cloud" style="display:none; margin-top:20px;"></div>
+    </div>
+
+    <div class="glass-card">
+        <h3>🧹 Daily Word Cleanup</h3>
+        <p style="font-size: 14px; margin-bottom: 12px;">Runs automatically every 24 hours (2:00 AM). Fixes misspellings, splits concatenated words, removes garbage.</p>
+        <button id="runCleanupBtn" class="btn btn-secondary">Run Cleanup Now</button>
+        <div id="cleanupReport" class="cleanup-report"></div>
+    </div>
+</div>
+
+<div id="aiModal" class="modal"><div class="modal-card"><h3>🤖 AI is thinking...</h3><div class="progress-wrap"><div id="progressBar"></div></div><p id="modalProgressText">Preparing request</p></div></div>
+<div id="toast" class="toast">✅ Completed</div>
+
+<script>
+    // Confetti safe wrapper
+    function safeConfetti() {
+        if (typeof canvasConfetti !== 'undefined') {
+            canvasConfetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        } else {
+            console.log("Confetti not available");
+        }
+    }
+
+    // DOM Elements
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const testKeyBtn = document.getElementById('testKeyBtn');
+    const keyStatus = document.getElementById('keyStatus');
+    const aiGenerateBtn = document.getElementById('aiGenerateBtn');
+    const themeToggle = document.getElementById('themeToggle');
+    const statTotal = document.getElementById('statTotalWords'), statAI = document.getElementById('statAIWords'), statToday = document.getElementById('statTodayAI'), statUser = document.getElementById('statUserWords');
+    const searchInput = document.getElementById('searchInput'), searchResults = document.getElementById('searchResults'), exportBtn = document.getElementById('exportCsvBtn'), csvUpload = document.getElementById('csvUpload');
+    const liveWordsDiv = document.getElementById('liveWordsList');
+    const processTextBtn = document.getElementById('processTextBtn'), pushWordsBtn = document.getElementById('pushWordsBtn'), importText = document.getElementById('importText'), processedPreview = document.getElementById('processedWordsPreview');
+    const activityDiv = document.getElementById('activityList'), modal = document.getElementById('aiModal'), progressBar = document.getElementById('progressBar'), modalText = document.getElementById('modalProgressText'), toastEl = document.getElementById('toast');
+    const runCleanupBtn = document.getElementById('runCleanupBtn');
+    const cleanupReportDiv = document.getElementById('cleanupReport');
+    let chart = null, allWordsArray = [], processedCache = [];
+    let validApiKey = false;
+
+    function showToast(msg, isError = false) { toastEl.innerHTML = `${isError ? '❌' : '✅'} ${msg}`; toastEl.classList.add('show'); setTimeout(() => toastEl.classList.remove('show'), 3000); }
+
+    function getStoredKey() { return localStorage.getItem('gboard_api_key') || ''; }
+    function saveKey(key) { if(key && key.trim()) { localStorage.setItem('gboard_api_key', key.trim()); apiKeyInput.value = key.trim(); } }
+
+    const savedKey = getStoredKey();
+    if(savedKey) { apiKeyInput.value = savedKey; testApiKey(); }
+
+    async function testApiKey() {
+        const key = apiKeyInput.value.trim();
+        if(!key) { keyStatus.innerHTML = '❌ Please enter an API key'; validApiKey=false; aiGenerateBtn.disabled=true; return; }
+        keyStatus.innerHTML = '🔍 Testing key...';
+        try {
+            const res = await fetch('/api/get_all_words', { headers: { 'x-api-key': key } });
+            if(res.status === 200) {
+                keyStatus.innerHTML = '✅ API key is valid! You can now generate AI words.';
+                validApiKey = true;
+                aiGenerateBtn.disabled = false;
+                aiGenerateBtn.innerHTML = '✨ Generate AI Words';
+                saveKey(key);
+                fetchStats();
+            } else if(res.status === 403) {
+                keyStatus.innerHTML = '❌ Invalid API key. Check your .env file API_SECRET_KEY.';
+                validApiKey = false;
+                aiGenerateBtn.disabled = true;
+                aiGenerateBtn.innerHTML = '✨ Generate AI Words (invalid key)';
+            } else {
+                keyStatus.innerHTML = `⚠️ Unexpected response: ${res.status}`;
+                validApiKey = false;
             }
+        } catch(e) {
+            keyStatus.innerHTML = `❌ Network error: ${e.message}`;
+            validApiKey = false;
+        }
+    }
+
+    testKeyBtn.onclick = testApiKey;
+
+    async function apiRequest(url, opts = {}) {
+        const key = apiKeyInput.value.trim();
+        if(!key) throw new Error('API key missing');
+        const headers = { 'Content-Type': 'application/json', 'x-api-key': key, ...opts.headers };
+        const res = await fetch(url, { ...opts, headers });
+        if(res.status === 403) { 
+            keyStatus.innerHTML = '❌ API key rejected. Please re-test.';
+            validApiKey = false;
+            aiGenerateBtn.disabled = true;
+            throw new Error('Invalid API key');
+        }
+        return res;
+    }
+
+    function animateCounter(el, target) { let curr = 0, step = Math.ceil(target/30), iv = setInterval(() => { curr += step; if(curr>=target) { el.innerText = target; clearInterval(iv); } else el.innerText = curr; }, 20); }
+    
+    async function fetchStats() { 
+        try { 
+            const res = await fetch('/api/status'); 
+            const d = await res.json(); 
+            animateCounter(statTotal, d.totalWordsSaved||0); 
+            animateCounter(statAI, d.totalAIGenerated||0); 
+            animateCounter(statToday, d.todayAIGenerated||0); 
+            animateCounter(statUser, (d.totalWordsSaved - d.totalAIGenerated)||0); 
+            if(chart) { chart.data.datasets[0].data = [d.totalAIGenerated||0, (d.totalWordsSaved - d.totalAIGenerated)||0]; chart.update(); } 
+            if(validApiKey) {
+                await refreshWordList(); 
+                await refreshActivity(); 
+            }
+        } catch(e) { console.error(e); } 
+    }
+
+    async function refreshWordList() { 
+        if(!validApiKey) return;
+        try { 
+            const res = await apiRequest('/api/get_all_words'); 
+            const data = await res.json(); 
+            allWordsArray = data.words || []; 
+            renderSearch(''); 
+        } catch(e) { showToast(e.message, true); } 
+    }
+
+    function renderSearch(q) { 
+        const filtered = q ? allWordsArray.filter(w => w.includes(q.toLowerCase())) : allWordsArray; 
+        searchResults.innerHTML = filtered.slice(0,100).map(w => `<span class="word-badge">${w}</span>`).join('') || '<em>No words</em>'; 
+    }
+
+    searchInput.addEventListener('input', (e) => renderSearch(e.target.value));
+
+    exportBtn.onclick = () => { 
+        if(!allWordsArray.length) return showToast("No words to export", true); 
+        const csv = "Word\n"+allWordsArray.join("\n"); 
+        const blob = new Blob([csv], {type:'text/csv'}); 
+        const a = document.createElement('a'); 
+        a.href = URL.createObjectURL(blob); 
+        a.download = `gboard_${Date.now()}.csv`; 
+        a.click(); 
+        showToast(`Exported ${allWordsArray.length} words`); 
+    };
+
+    csvUpload.onchange = async (e) => { 
+        const file = e.target.files[0]; 
+        if(!file) return; 
+        const text = await file.text(); 
+        const words = [...new Set(text.split(/\r?\n/).map(l=>l.trim().toLowerCase().replace(/[^a-z]/g,'')).filter(w=>w.length>1))]; 
+        if(!words.length) return showToast("No valid words", true); 
+        try {
+            const res = await apiRequest('/api/save_processed_words', { method:'POST', body:JSON.stringify({wordsList:words}) }); 
+            const data = await res.json(); 
+            showToast(data.message); 
+            fetchStats(); 
+        } catch(e) { showToast(e.message, true); }
+        csvUpload.value = ''; 
+    };
+
+    async function refreshActivity() { 
+        if(!validApiKey) return;
+        try { 
+            const res = await apiRequest('/api/recent_activity'); 
+            const data = await res.json(); 
+            const acts = data.activities || []; 
+            activityDiv.innerHTML = acts.map(a => `<div class="activity-item"><span><strong>${a.word}</strong> (${a.source})</span><span>${new Date(a.timestamp).toLocaleString()}</span></div>`).join('') || '<em>No activity</em>'; 
+        } catch(e) { console.error(e); } 
+    }
+
+    function initChart() { 
+        const ctx = document.getElementById('wordChart').getContext('2d'); 
+        chart = new Chart(ctx, { type:'doughnut', data:{ labels:['AI','User'], datasets:[{ data:[0,0], backgroundColor:['#9d5cff','#38bdf8'], borderWidth:0 }] }, options:{ responsive:true, maintainAspectRatio:true, plugins:{ legend:{ position:'bottom' } } } }); 
+    }
+
+    aiGenerateBtn.onclick = async () => { 
+        if(!validApiKey) { showToast("Please test your API key first", true); return; }
+        modal.style.display = 'flex'; 
+        progressBar.style.width = '0%'; 
+        modalText.innerText = "Generating from AI..."; 
+        let prog = 0, interval = setInterval(() => { if(prog<90) { prog+=10; progressBar.style.width = prog+'%'; modalText.innerText = `AI working ${prog}%`; } }, 400); 
+        try { 
+            const res = await apiRequest('/api/ai/manual_generate', { method:'POST' }); 
+            clearInterval(interval); 
+            progressBar.style.width='100%'; 
+            modalText.innerText='Done!'; 
+            setTimeout(()=>modal.style.display='none',800); 
+            const data = await res.json(); 
+            if(res.ok) { 
+                liveWordsDiv.innerHTML = (data.generatedWords||[]).map(w=>`<span class="word-badge">${w}</span>`).join(''); 
+                showToast(`✨ Added ${data.addedCount} new words`); 
+                safeConfetti(); 
+                fetchStats(); 
+            } else throw new Error(data.error); 
+        } catch(e) { 
+            clearInterval(interval); 
+            modal.style.display='none'; 
+            showToast(e.message, true); 
+        } 
+    };
+
+    processTextBtn.onclick = async () => { 
+        if(!validApiKey) { showToast("Please test API key first", true); return; }
+        const raw = importText.value; 
+        if(!raw.trim()) return showToast("Paste text first", true); 
+        processTextBtn.disabled=true; 
+        processTextBtn.innerHTML='⏳ Processing...'; 
+        try { 
+            const res = await apiRequest('/api/process_words', { method:'POST', body:JSON.stringify({wordsText:raw}) }); 
+            const data = await res.json(); 
+            if(res.ok) { 
+                processedCache = data.processedWords||[]; 
+                if(processedCache.length) { 
+                    processedPreview.style.display='flex'; 
+                    processedPreview.innerHTML = processedCache.map(w=>`<span class="word-badge">${w}</span>`).join(''); 
+                    pushWordsBtn.disabled=false; 
+                    showToast(`Extracted ${processedCache.length} words`); 
+                } else showToast("No valid words", true); 
+            } else throw new Error(data.error); 
+        } catch(e) { showToast(e.message, true); } 
+        processTextBtn.disabled=false; 
+        processTextBtn.innerHTML='Process Words'; 
+    };
+
+    // UPDATED CHUNK-BASED PUSH LOGIC WITH SPINNER
+    pushWordsBtn.onclick = async () => { 
+        if(!processedCache.length) return; 
+        
+        pushWordsBtn.disabled = true; 
+        const totalWords = processedCache.length;
+        const chunkSize = 25; 
+        
+        for (let i = 0; i < totalWords; i += chunkSize) {
+            const chunk = processedCache.slice(i, i + chunkSize);
+            const currentProgress = Math.min(i + chunkSize, totalWords);
+            
+            pushWordsBtn.innerHTML = `<span class="spinner"></span> Pushing... (${currentProgress}/${totalWords})`;
+            
+            try { 
+                await apiRequest('/api/save_processed_words', { 
+                    method:'POST', 
+                    body:JSON.stringify({wordsList: chunk}) 
+                }); 
+            } catch(e) { 
+                showToast("Error: " + e.message, true); 
+                pushWordsBtn.disabled = false;
+                pushWordsBtn.innerHTML = 'Push to Database';
+                return; 
+            } 
         }
 
-        async function processText() {
-            const apiKey = document.getElementById('apiKeyInput').value;
-            const wordsText = document.getElementById('importText').value;
-            const btn = document.getElementById('processBtn');
+        showToast(`✅ Successfully processed all ${totalWords} words`); 
+        importText.value = ''; 
+        processedPreview.style.display = 'none'; 
+        processedCache = []; 
+        pushWordsBtn.disabled = true; 
+        pushWordsBtn.innerHTML = 'Push to Database'; 
+        fetchStats(); 
+    };
 
-            if (!apiKey) {
-                alert("Please enter Master API Secret Key");
-                return;
-            }
-            if (!wordsText.trim()) {
-                alert("Please paste some text to process");
-                return;
-            }
+    // Drag & drop
+    const dropZone = document.getElementById('dragDropZone');
+    dropZone.onclick = () => { let inp = document.createElement('input'); inp.type='file'; inp.accept='.txt'; inp.onchange = async (e) => { if(e.target.files[0]) importText.value = await e.target.files[0].text(); }; inp.click(); };
+    dropZone.ondragover = e => e.preventDefault();
+    dropZone.ondrop = async e => { e.preventDefault(); const file = e.dataTransfer.files[0]; if(file && file.type==='text/plain') importText.value = await file.text(); else showToast("Only .txt", true); };
 
-            btn.disabled = true;
-            btn.innerText = "Processing... Please wait.";
-            document.getElementById('outputContainer').style.display = 'none';
+    // Dark mode
+    if(localStorage.getItem('darkMode')==='true') { document.body.classList.add('dark'); themeToggle.innerHTML='☀️'; }
+    themeToggle.onclick = () => { document.body.classList.toggle('dark'); const isDark = document.body.classList.contains('dark'); localStorage.setItem('darkMode', isDark); themeToggle.innerHTML = isDark ? '☀️' : '🌙'; };
 
-            try {
-                const response = await fetch('/api/process_words', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-api-key': apiKey
-                    },
-                    body: JSON.stringify({ wordsText })
-                });
-
-                const result = await response.json();
-                
-                if (response.status === 200) {
-                    const cleanedWords = result.processedWords;
-                    if (cleanedWords.length === 0) {
-                        alert("No valid new words found to process.");
-                    } else {
-                        document.getElementById('processedText').value = cleanedWords.join(" ");
-                        document.getElementById('outputContainer').style.display = 'block';
-                    }
-                } else {
-                    alert("Error: " + (result.error || "Failed to process"));
-                }
-            } catch (error) {
-                alert("Network error occurred during processing.");
-            }
-
-            btn.disabled = false;
-            btn.innerText = "Process Words";
+    // Cleanup Function
+    runCleanupBtn.onclick = async () => {
+        if(!validApiKey) { showToast("Please test API key first", true); return; }
+        runCleanupBtn.disabled = true;
+        runCleanupBtn.innerHTML = '⏳ Running cleanup...';
+        cleanupReportDiv.innerHTML = '<em>Processing...</em>';
+        try {
+            const res = await apiRequest('/api/run_cleanup', { method: 'POST' });
+            const data = await res.json();
+            if(res.ok) {
+                let html = `<strong>✅ Cleanup completed</strong><br>Processed: ${data.processed} | Deleted: ${data.deleted} | Corrected: ${data.corrected} | Split: ${data.splitWords}<br><hr>`;
+                if(data.report && data.report.length) {
+                    html += '<details><summary>📋 Details (click to expand)</summary>';
+                    data.report.forEach(r => {
+                        if(r.action === 'kept') html += `🟢 ${r.original} (kept)<br>`;
+                        else if(r.action === 'corrected') html += `🟡 ${r.original} → ${r.new.join(', ')}<br>`;
+                        else if(r.action === 'split') html += `🔀 ${r.original} → ${r.new.join(', ')}<br>`;
+                        else if(r.action === 'deleted (garbage)') html += `🔴 ${r.original} (deleted)<br>`;
+                    });
+                    html += '</details>';
+                } else html += '<em>No words needed cleanup.</em>';
+                cleanupReportDiv.innerHTML = html;
+                showToast(`Cleanup done. Processed ${data.processed} words.`);
+                fetchStats();
+            } else throw new Error(data.error);
+        } catch(e) {
+            showToast(e.message, true);
+            cleanupReportDiv.innerHTML = `<span class="error">Error: ${e.message}</span>`;
         }
+        runCleanupBtn.disabled = false;
+        runCleanupBtn.innerHTML = 'Run Cleanup Now';
+    };
 
-        async function pushWords() {
-            const apiKey = document.getElementById('apiKeyInput').value;
-            const finalizedText = document.getElementById('processedText').value;
-            const btn = document.getElementById('pushBtn');
-
-            if (!finalizedText.trim()) {
-                alert("The processed list is empty.");
-                return;
-            }
-
-            const wordsList = finalizedText.split(/\s+/).filter(w => w.length > 0);
-
-            btn.disabled = true;
-            btn.innerText = "Pushing to Cloud...";
-
-            try {
-                const response = await fetch('/api/save_processed_words', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-api-key': apiKey
-                    },
-                    body: JSON.stringify({ wordsList })
-                });
-
-                const result = await response.json();
-                
-                if (response.status === 200) {
-                    alert(result.message);
-                    // Clear the inputs
-                    document.getElementById('importText').value = '';
-                    document.getElementById('processedText').value = '';
-                    document.getElementById('outputContainer').style.display = 'none';
-                    fetchStatus(); // Update dashboard count
-                } else {
-                    alert("Error: " + (result.error || "Failed to save words"));
-                }
-            } catch (error) {
-                alert("Network error occurred while saving.");
-            }
-
-            btn.disabled = false;
-            btn.innerText = "Push to Database";
-        }
-
-        fetchStatus();
-    </script>
+    initChart(); 
+    if(savedKey) testApiKey();
+    else fetchStats();
+    setInterval(() => { if(validApiKey) fetchStats(); }, 30000);
+</script>
 </body>
 </html>
