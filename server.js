@@ -57,32 +57,27 @@ const getStartOfToday = () => {
 
 // ==================== NEW AI LOGIC ====================
 
-// Function to ask a random question to AI, process the paragraph, and save new words
+// Auto prompt AI to pick a topic, generate words, and save
 async function autoAskQuestionAndExtractWords() {
     if (!groqClient) {
         console.log("❌ Groq client not initialized.");
         return { totalAdded: 0, allGeneratedWords: [] };
     }
 
-    // List of random topics
-    const prompts = [
-        "Write a casual 100-word story about Indian college life using a mix of pure Hindi and English words written in English script.",
-        "Describe a crowded Mumbai local train experience in street-style Hinglish. Just write the paragraph.",
-        "Explain how to make proper desi chai using casual Indian slang and Hinglish. No formatting, just text.",
-        "Talk about weekend plans and chilling with friends using casual modern Indian internet language.",
-        "Describe a dramatic Bollywood movie scene in casual desi Hinglish.",
-        "Explain the excitement of the last over of a cricket match in Indian slang."
-    ];
-    
-    const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
-    console.log(`🤖 AI Auto-Question Running: "${randomPrompt}"`);
+    // Master prompt forcing AI to self-select topic and generate length
+    const masterPrompt = `Act as a Hinglish vocabulary generator. 
+Step 1: Randomly pick a unique topic (e.g., human anatomy/body parts, a wedding, an Indian railway journey, street food, college politics, spirituality, village farming, technology, etc.). 
+Step 2: Write a detailed 500-word paragraph about that chosen topic using a rich mix of pure Hindi words (written in English script) and modern Indian English slang. 
+Provide ONLY the raw paragraph text without any titles, formatting, bullet points, or conversational filler.`;
+
+    console.log(`🤖 AI Auto-Generation Running with dynamic topic selection...`);
 
     try {
         const response = await groqClient.chat.completions.create({
-            messages: [{ role: "user", content: randomPrompt }],
+            messages: [{ role: "user", content: masterPrompt }],
             model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
-            temperature: 0.9,
-            max_tokens: 1000,
+            temperature: 0.95, // High temp for diverse topics
+            max_tokens: 2000,
         });
 
         let aiResponseText = response.choices[0]?.message?.content || "";
